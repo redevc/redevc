@@ -1,0 +1,25 @@
+{
+  "name": "@redevc/root",
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "turbo dev --parallel",
+    "build": "turbo build --parallel",
+    "start": "turbo start --parallel"
+  },
+  "dependencies": {
+    "turbo": "^2.5.4"
+  },
+  "author": {
+    "name": "Israel R. Jatobá",
+    "email": "contact.israeljatoba@gmail.com",
+    "github": "https://github.com/yeyTaken"
+  },
+  "keywords": [],
+  "license": "ISC",
+  "packageManager": "pnpm@10.22.0",
+  "workspaces": [
+    "api",
+    "apps/*",
+    "web"
+  ]
+}

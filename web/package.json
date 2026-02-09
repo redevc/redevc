@@ -1,0 +1,38 @@
+{
+  "name": "@redevc/website",
+  "version": "0.1.0-beta",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 5117",
+    "build": "next build",
+    "start": "next start --port 5117",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@heroui/react": "^2.8.7",
+    "@heroui/theme": "^2.4.25",
+    "@hookform/resolvers": "^5.2.2",
+    "bcrypt": "^6.0.0",
+    "better-auth": "^1.4.10",
+    "framer-motion": "^12.24.0",
+    "lucide-react": "^0.562.0",
+    "next": "16.1.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-hook-form": "^7.70.0",
+    "react-icons": "^5.5.0",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "babel-plugin-react-compiler": "1.0.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.1",
+    "tailwindcss": "^4",
+    "typescript": "^5.9.3"
+  }
+}

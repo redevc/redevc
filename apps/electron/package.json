@@ -1,0 +1,35 @@
+{
+  "name": "@redevc/electron",
+  "version": "1.0.0",
+  "homepage": "https://redevc.com.br",
+  "private": true,
+  "main": "main.js",
+  "author": {
+    "name": "Israel R. Jatobá",
+    "email": "contact.israeljatoba@gmail.com"
+  },
+  "scripts": {
+    "dev": "pnpx electron .",
+    "build": "pnpx electron-builder",
+    "build:linux": "pnpx electron-builder --linux"
+  },
+  "build": {
+    "appId": "com.redevc.app",
+    "productName": "RedeVC",
+    "files": [
+      "**/*"
+    ],
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Utility"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    }
+  }
+}
