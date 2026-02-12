@@ -9,8 +9,9 @@ import { betterAuthPlugin, OpenAPI } from "./http/plugins/better-auth.js";
 import { logger } from "./utils/logger.js";
 import { indexRoutes } from "./http/routes/index.js";
 import { userRoutes } from "./http/routes/user.js";
+import { usersRoutes } from "./http/routes/users.js";
 import { aboutRoutes } from "./http/routes/about.js";
-import { postsRoutes } from "./http/routes/posts.js";
+import { newsRoutes } from "./http/routes/news.js";
 import { Package } from "./config/package.js";
 
 const app = new Elysia({
@@ -53,8 +54,9 @@ const app = new Elysia({
   .use(betterAuthPlugin)
   .use(indexRoutes)
   .use(userRoutes)
+  .use(usersRoutes)
   .use(aboutRoutes)
-  .use(postsRoutes)
+  .use(newsRoutes)
   .listen({ port: env.DEFAULT_PORT }, (info) => {
     logger(`🔥 api is running at ${info.hostname}:${info.port}`);
   });

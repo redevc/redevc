@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { NewsSlugClient } from "../../_components/news-slug";
+import { NewsSlugClient } from "../../_components/news/slug";
 
 export const metadata: Metadata = {
   title: "Rede Você",

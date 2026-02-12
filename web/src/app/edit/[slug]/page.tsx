@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { DashboardClient } from "../_components/dashboard";
+import { EditSlugClient } from "../../_components/edit/slug";
 
 export const metadata: Metadata = {
   title: "Rede Você",
@@ -14,6 +14,9 @@ export const metadata: Metadata = {
   },
 };
 
-export default function DashboardPage() {
-  return <DashboardClient />;
+type Params = Promise<{ slug: string }>;
+
+export default async function EditNewsPage({ params }: { params: Params }) {
+  const { slug } = await params;
+  return <EditSlugClient slug={slug} />;
 }

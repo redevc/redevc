@@ -6,25 +6,25 @@ import { z } from "zod";
 import { betterAuthPlugin } from "../plugins/better-auth.js";
 import { auth } from "../../config/auth.js";
 import { slugify } from "../../utils/slugify.js";
+import { isPublisherRole } from "../../utils/roles.js";
 import {
-  postSchema,
-  postStatusSchema,
-  postCreateSchema,
-  postUpdateSchema,
-  postQuerySchema,
-  type Post,
-} from "../schemas/post.js";
+  newsSchema,
+  newsStatusSchema,
+  newsCreateSchema,
+  newsUpdateSchema,
+  newsQuerySchema,
+  type News,
+} from "../schemas/news.js";
 import {
-  postsCollection,
-  ensurePostIndexes,
-  type PostDocument,
-} from "../../database/collections/posts.js";
-
-await ensurePostIndexes();
+  newsCollection,
+  ensureNewsIndexes,
+  type NewsDocument,
+} from "../../database/collections/news.js";
+await ensureNewsIndexes();
 
 const errorSchema = z.object({ message: z.string() });
 
-const stripInternal = (doc: PostDocument | null): Post | null => {
+const stripInternal = (doc: NewsDocument | null): News | null => {
   if (!doc) return null;
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { _id, ...rest } = doc;
@@ -32,12 +32,12 @@ const stripInternal = (doc: PostDocument | null): Post | null => {
 };
 
 const ensureUniqueSlug = async (title: string) => {
-  const baseSlug = slugify(title) || "post";
+  const baseSlug = slugify(title) || "news";
   let slug = baseSlug;
   let counter = 2;
 
   while (
-    await postsCollection.findOne(
+    await newsCollection.findOne(
       { slug },
       { projection: { _id: 1 } },
     )
@@ -53,8 +53,8 @@ const nowIso = () => new Date().toISOString();
 const escapeRegex = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-type PostSearchResult = Pick<
-  Post,
+type NewsSearchResult = Pick<
+  News,
   | "id"
   | "slug"
   | "title"
@@ -63,23 +63,24 @@ type PostSearchResult = Pick<
   | "createdAt"
   | "status"
   | "tags"
+  | "views"
 >;
 
-export const postsRoutes = new Elysia({ prefix: "/news" })
+export const newsRoutes = new Elysia({ prefix: "/news" })
   .use(betterAuthPlugin)
 
   .post(
     "/",
     async ({ body, user, set }) => {
-      const isAdmin = user.role === "admin";
-      if (!isAdmin) {
+      const isPublisher = isPublisherRole(user.role);
+      if (!isPublisher) {
         set.status = 403;
-        return { message: "only admins can create posts" };
+        return { message: "only publishers can create news" };
       }
 
       const createdAt = nowIso();
 
-      const post: Post = {
+      const news: News = {
         id: randomUUID(),
         slug: await ensureUniqueSlug(body.title),
         title: body.title,
@@ -91,12 +92,13 @@ export const postsRoutes = new Elysia({ prefix: "/news" })
         status: body.status ?? "draft",
         isFeatured: body.isFeatured,
         featuredUntil: body.featuredUntil,
+        views: 0,
         createdAt,
         updatedAt: createdAt,
       };
 
       try {
-        await postsCollection.insertOne(post as PostDocument);
+        await newsCollection.insertOne(news as NewsDocument);
       } catch (error: any) {
         if (error?.code === 11000) {
           set.status = 409;
@@ -106,18 +108,76 @@ export const postsRoutes = new Elysia({ prefix: "/news" })
       }
 
       set.status = 201;
-      return post;
+      return news;
     },
     {
       auth: true,
-      body: postCreateSchema,
+      body: newsCreateSchema,
       response: {
-        201: postSchema,
+        201: newsSchema,
         403: errorSchema,
         409: errorSchema,
       },
       detail: {
         summary: "Create news",
+        tags: ["News"],
+      },
+    },
+  )
+
+  // Comentários
+  .post(
+    "/slug/:slug/view",
+    async ({ request, params, set }) => {
+      const news = await newsCollection.findOne({ slug: params.slug });
+
+      if (!news) {
+        set.status = 404;
+        return { message: "news not found" };
+      }
+
+      if (news.status === "draft") {
+        const session = await auth.api.getSession({ headers: request.headers });
+        const user = session?.user;
+
+        if (!session || !user) {
+          set.status = 401;
+          return { message: "authentication required to view draft" };
+        }
+
+        const isOwner = news.authorId === user.id;
+
+        if (!isOwner) {
+          set.status = 403;
+          return { message: "drafts allowed only for owner" };
+        }
+      }
+
+      await newsCollection.updateOne({ slug: params.slug }, { $inc: { views: 1 } });
+
+      const updated = await newsCollection.findOne(
+        { slug: params.slug },
+        { projection: { _id: 0, views: 1 } },
+      );
+
+      if (!updated) {
+        set.status = 500;
+        return { message: "news not found after update" };
+      }
+
+      return { views: updated.views ?? 0 };
+    },
+    {
+      params: z.object({ slug: z.string().min(1) }),
+      response: {
+        200: z.object({ views: z.number().int().nonnegative() }),
+        401: errorSchema,
+        403: errorSchema,
+        404: errorSchema,
+        500: errorSchema,
+      },
+      detail: {
+        summary: "Increment news views by slug",
         tags: ["News"],
       },
     },
@@ -129,7 +189,7 @@ export const postsRoutes = new Elysia({ prefix: "/news" })
       const session = await auth.api.getSession({ headers: request.headers });
       const user = session?.user;
 
-      const filter: Filter<PostDocument> = {};
+      const filter: Filter<NewsDocument> = {};
 
       if (query.tag) {
         filter.tags = query.tag;
@@ -143,8 +203,6 @@ export const postsRoutes = new Elysia({ prefix: "/news" })
         filter.status = "published";
         if (query.authorId) filter.authorId = query.authorId;
       } else {
-        const isAdmin = user.role === "admin";
-
         if (query.status === "draft") {
           // Rascunhos só podem ser vistos pelo próprio autor, mesmo para admins.
           if (query.authorId && query.authorId !== user.id) {
@@ -177,14 +235,14 @@ export const postsRoutes = new Elysia({ prefix: "/news" })
       const sort: Sort = { createdAt: -1, updatedAt: -1 };
 
       const [data, total] = await Promise.all([
-        postsCollection
+        newsCollection
           .find(filter)
           .sort(sort)
           .skip(skip)
           .limit(query.limit)
-          .project<Post>({ _id: 0 })
+          .project<News>({ _id: 0 })
           .toArray(),
-        postsCollection.countDocuments(filter),
+        newsCollection.countDocuments(filter),
       ]);
 
       set.headers["x-total-count"] = String(total);
@@ -194,9 +252,9 @@ export const postsRoutes = new Elysia({ prefix: "/news" })
       return data;
     },
     {
-      query: postQuerySchema,
+      query: newsQuerySchema,
       response: {
-        200: z.array(postSchema),
+        200: z.array(newsSchema),
         403: errorSchema,
       },
       detail: {
@@ -212,7 +270,7 @@ export const postsRoutes = new Elysia({ prefix: "/news" })
       const session = await auth.api.getSession({ headers: request.headers });
       const user = session?.user;
 
-      const conditions: Filter<PostDocument>[] = [];
+      const conditions: Filter<NewsDocument>[] = [];
 
       const regex = new RegExp(escapeRegex(query.q), "i");
       conditions.push({
@@ -249,11 +307,11 @@ export const postsRoutes = new Elysia({ prefix: "/news" })
 
       const sort: Sort = { createdAt: -1 };
 
-      const data = await postsCollection
+      const data = await newsCollection
         .find(filter)
         .sort(sort)
         .limit(query.limit)
-        .project<PostSearchResult>({
+        .project<NewsSearchResult>({
           _id: 0,
           id: 1,
           slug: 1,
@@ -263,6 +321,7 @@ export const postsRoutes = new Elysia({ prefix: "/news" })
           createdAt: 1,
           status: 1,
           tags: 1,
+          views: 1,
         })
         .toArray();
 
@@ -272,12 +331,12 @@ export const postsRoutes = new Elysia({ prefix: "/news" })
       query: z.object({
         q: z.string().min(2),
         limit: z.coerce.number().int().positive().max(50).default(10),
-        status: postStatusSchema.optional(),
+        status: newsStatusSchema.optional(),
         featuredOnly: z.coerce.boolean().optional(),
       }),
       response: {
         200: z.array(
-          postSchema.pick({
+          newsSchema.pick({
             id: true,
             slug: true,
             title: true,
@@ -286,6 +345,7 @@ export const postsRoutes = new Elysia({ prefix: "/news" })
             createdAt: true,
             status: true,
             tags: true,
+            views: true,
           }),
         ),
         401: errorSchema,
@@ -301,16 +361,16 @@ export const postsRoutes = new Elysia({ prefix: "/news" })
   .get(
     "/slug/:slug",
     async ({ request, params, set }) => {
-      const post = stripInternal(
-        await postsCollection.findOne({ slug: params.slug }),
+      const news = stripInternal(
+        await newsCollection.findOne({ slug: params.slug }),
       );
 
-      if (!post) {
+      if (!news) {
         set.status = 404;
-        return { message: "post not found" };
+        return { message: "news not found" };
       }
 
-      if (post.status === "draft") {
+      if (news.status === "draft") {
         const session = await auth.api.getSession({ headers: request.headers });
         const user = session?.user;
 
@@ -319,7 +379,7 @@ export const postsRoutes = new Elysia({ prefix: "/news" })
           return { message: "authentication required to view draft" };
         }
 
-        const isOwner = post.authorId === user.id;
+        const isOwner = news.authorId === user.id;
 
         if (!isOwner) {
           set.status = 403;
@@ -327,12 +387,12 @@ export const postsRoutes = new Elysia({ prefix: "/news" })
         }
       }
 
-      return post;
+      return news;
     },
     {
       params: z.object({ slug: z.string().min(1) }),
       response: {
-        200: postSchema,
+        200: newsSchema,
         401: errorSchema,
         403: errorSchema,
         404: errorSchema,
@@ -347,16 +407,16 @@ export const postsRoutes = new Elysia({ prefix: "/news" })
   .get(
     "/:id",
     async ({ request, params, set }) => {
-      const post = stripInternal(
-        await postsCollection.findOne({ id: params.id }),
+      const news = stripInternal(
+        await newsCollection.findOne({ id: params.id }),
       );
 
-      if (!post) {
+      if (!news) {
         set.status = 404;
-        return { message: "post not found" };
+        return { message: "news not found" };
       }
 
-      if (post.status === "draft") {
+      if (news.status === "draft") {
         const session = await auth.api.getSession({ headers: request.headers });
         const user = session?.user;
 
@@ -365,8 +425,7 @@ export const postsRoutes = new Elysia({ prefix: "/news" })
           return { message: "authentication required to view draft" };
         }
 
-        const isAdmin = user.role === "admin";
-        const isOwner = post.authorId === user.id;
+        const isOwner = news.authorId === user.id;
 
         if (!isOwner) {
           set.status = 403;
@@ -374,12 +433,12 @@ export const postsRoutes = new Elysia({ prefix: "/news" })
         }
       }
 
-      return post;
+      return news;
     },
     {
       params: z.object({ id: z.string().uuid() }),
       response: {
-        200: postSchema,
+        200: newsSchema,
         401: errorSchema,
         403: errorSchema,
         404: errorSchema,
@@ -399,22 +458,22 @@ export const postsRoutes = new Elysia({ prefix: "/news" })
         return { message: "not authenticated" };
       }
 
-      const existing = await postsCollection.findOne({ id: params.id });
+      const existing = await newsCollection.findOne({ id: params.id });
       if (!existing) {
         set.status = 404;
-        return { message: "post not found" };
+        return { message: "news not found" };
       }
 
       const isOwner = existing.authorId === user.id;
-      const isAdmin = user.role === "admin";
-      if (!isAdmin && !isOwner) {
+      const isPublisher = isPublisherRole(user.role);
+      if (!isPublisher && !isOwner) {
         set.status = 403;
-        return { message: "only admins or the author can update this post" };
+        return { message: "only publishers or the author can update this news" };
       }
 
       const nextStatus = body.status ?? existing.status;
 
-      const updated: Partial<Post> = {
+      const updated: Partial<News> = {
         title: body.title ?? existing.title,
         description: body.description ?? existing.description,
         content: body.content ?? existing.content,
@@ -426,28 +485,28 @@ export const postsRoutes = new Elysia({ prefix: "/news" })
         updatedAt: nowIso(),
       };
 
-      await postsCollection.updateOne(
+      await newsCollection.updateOne(
         { id: params.id },
         { $set: updated },
       );
 
-      const post = stripInternal(
-        await postsCollection.findOne({ id: params.id }),
+      const news = stripInternal(
+        await newsCollection.findOne({ id: params.id }),
       );
 
-      if (!post) {
+      if (!news) {
         set.status = 500;
-        return { message: "post not found after update" };
+        return { message: "news not found after update" };
       }
 
-      return post;
+      return news;
     },
     {
       auth: true,
-      params: postSchema.pick({ id: true }),
-      body: postUpdateSchema,
+      params: newsSchema.pick({ id: true }),
+      body: newsUpdateSchema,
       response: {
-        200: postSchema,
+        200: newsSchema,
         401: errorSchema,
         403: errorSchema,
         404: errorSchema,
@@ -468,18 +527,18 @@ export const postsRoutes = new Elysia({ prefix: "/news" })
         return { message: "not authenticated" };
       }
 
-      const isAdmin = user.role === "admin";
-      const isOwner = (await postsCollection.findOne({ id: params.id }))?.authorId === user.id;
-      if (!isAdmin && !isOwner) {
+      const isPublisher = isPublisherRole(user.role);
+      const isOwner = (await newsCollection.findOne({ id: params.id }))?.authorId === user.id;
+      if (!isPublisher && !isOwner) {
         set.status = 403;
-        return { message: "only the author can delete this draft" };
+        return { message: "only publishers or the author can delete this news" };
       }
 
-      const result = await postsCollection.deleteOne({ id: params.id });
+      const result = await newsCollection.deleteOne({ id: params.id });
 
       if (!result.deletedCount) {
         set.status = 404;
-        return { message: "post not found" };
+        return { message: "news not found" };
       }
 
       set.status = 204;
@@ -487,7 +546,7 @@ export const postsRoutes = new Elysia({ prefix: "/news" })
     },
     {
       auth: true,
-      params: postSchema.pick({ id: true }),
+      params: newsSchema.pick({ id: true }),
       detail: {
         summary: "Delete news",
         tags: ["News"],

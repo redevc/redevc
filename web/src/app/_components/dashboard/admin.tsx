@@ -4,10 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { addToast, Tabs, Tab } from "@heroui/react";
+import { notFound } from "next/navigation";
 
 import { auth } from "@/lib/auth";
 import { createNews, fetchNews } from "@/lib/api/news";
-import type { Post } from "@/types/post";
+import type { News } from "@/types/news";
+import { isPublisherRole } from "@/utils/roles";
 
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString("pt-BR", {
@@ -17,10 +19,10 @@ const formatDate = (iso: string) =>
     minute: "2-digit",
   });
 
-export function DashboardClient() {
+export function AdminDashboardClient() {
   const { data: session, isPending } = auth.useSession();
-  const [published, setPublished] = useState<Post[]>([]);
-  const [drafts, setDrafts] = useState<Post[]>([]);
+  const [published, setPublished] = useState<News[]>([]);
+  const [drafts, setDrafts] = useState<News[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -34,7 +36,12 @@ export function DashboardClient() {
     status: "draft" as "draft" | "published",
   });
 
-  const isAdmin = session?.user?.role === "admin";
+  const user = session?.user;
+  const userId = user?.id as string | undefined;
+  const isAdmin = isPublisherRole(user?.role);
+  const [profileName, setProfileName] = useState(user?.name ?? "");
+  const [profileImage, setProfileImage] = useState(user?.image ?? "");
+  const [savingProfile, setSavingProfile] = useState(false);
 
   useEffect(() => {
     if (!isAdmin || !session?.user?.id) return;
@@ -143,25 +150,8 @@ export function DashboardClient() {
     );
   }
 
-  if (!session?.user) {
-    return (
-      <div className="w-full h-full flex items-center justify-center text-neutral-700 px-4">
-        <p>Faça login para acessar o painel.</p>
-      </div>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <div className="w-full h-full flex items-center justify-center text-neutral-700 px-4 text-center">
-        <div>
-          <p className="text-lg font-semibold">Acesso restrito</p>
-          <p className="text-sm text-neutral-500 mt-1">Somente administradores podem acessar o dashboard.</p>
-          <Link href="/" className="mt-3 inline-block text-sm font-semibold text-orange-600 hover:text-orange-700">Voltar para a home</Link>
-        </div>
-      </div>
-    );
-  }
+  if (!session?.user) return notFound();
+  if (!isAdmin) return notFound();
 
   return (
     <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-6">
@@ -176,7 +166,79 @@ export function DashboardClient() {
               Publicados e rascunhos carregados diretamente da API.
             </p>
           </div>
+          <button
+            type="button"
+            onClick={() => auth.signOut?.().catch(() => {})}
+            className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-100 shadow-sm"
+          >
+            Sair
+          </button>
         </header>
+
+        <section className="rounded-2xl border border-neutral-200 bg-white/95 p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-500">Perfil</p>
+              <h2 className="text-lg font-semibold text-neutral-900">Editar informações</h2>
+            </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!userId) return;
+                  setSavingProfile(true);
+                  await auth.updateUser(
+                    {
+                      name: profileName.trim() || undefined,
+                      image: profileImage.trim() || null,
+                    },
+                    {
+                      onSuccess: () => {
+                        addToast({ title: "Perfil atualizado", color: "success" });
+                      },
+                      onError: (err) => {
+                        const message =
+                          err instanceof Error
+                            ? err.message
+                            : (err as any)?.message || (err as any)?.error || "Falha desconhecida";
+                        addToast({
+                          title: "Erro ao salvar perfil",
+                          description: message,
+                          color: "danger",
+                        });
+                      },
+                      onSettled: () => {
+                        setSavingProfile(false);
+                      },
+                    },
+                  );
+                }}
+                disabled={savingProfile || !userId}
+                className="inline-flex items-center gap-2 rounded-full bg-neutral-900 text-white px-4 py-2 text-sm font-semibold hover:bg-neutral-800 transition disabled:opacity-60"
+              >
+                {savingProfile ? "Salvando..." : "Salvar"}
+              </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label className="block text-sm font-medium text-neutral-800">
+              Nome
+              <input
+                value={profileName}
+                onChange={(e) => setProfileName(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                placeholder="Seu nome"
+              />
+            </label>
+            <label className="block text-sm font-medium text-neutral-800">
+              URL da foto (opcional)
+              <input
+                value={profileImage ?? ""}
+                onChange={(e) => setProfileImage(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                placeholder="https://..."
+              />
+            </label>
+          </div>
+        </section>
 
         <Tabs aria-label="Gerenciar conteúdos" variant="underlined" color="warning" fullWidth>
           <Tab key="view" title="Conteúdo">
@@ -190,12 +252,12 @@ export function DashboardClient() {
               <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
                 <p className="text-sm font-semibold text-neutral-700">Publicados</p>
                 <p className="mt-2 text-3xl font-bold text-neutral-900">{publishedCount}</p>
-                <p className="text-xs text-neutral-500 mt-1">Posts ativos no site</p>
+                <p className="text-xs text-neutral-500 mt-1">Notícias ativas no site</p>
               </div>
               <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
                 <p className="text-sm font-semibold text-neutral-700">Rascunhos</p>
                 <p className="mt-2 text-3xl font-bold text-neutral-900">{draftCount}</p>
-                <p className="text-xs text-neutral-500 mt-1">Posts em edição</p>
+                <p className="text-xs text-neutral-500 mt-1">Notícias em edição</p>
               </div>
             </section>
 
@@ -214,14 +276,14 @@ export function DashboardClient() {
                     </div>
                   ) : publishedList.length ? (
                     <ul className="space-y-2">
-                      {publishedList.map((post) => (
-                        <li key={post.id} className="border border-neutral-100 rounded-lg overflow-hidden">
-                          <Link href={`/news/${post.slug}`} className="block group">
+                      {publishedList.map((newsItem) => (
+                        <li key={newsItem.id} className="border border-neutral-100 rounded-lg overflow-hidden">
+                          <Link href={`/news/${newsItem.slug}`} className="block group">
                             <div className="w-full bg-neutral-100">
-                              {post.coverImageUrl ? (
+                              {newsItem.coverImageUrl ? (
                                 <Image
-                                  src={post.coverImageUrl}
-                                  alt={post.title}
+                                  src={newsItem.coverImageUrl}
+                                  alt={newsItem.title}
                                   width={640}
                                   height={360}
                                   className="w-full object-cover"
@@ -235,9 +297,9 @@ export function DashboardClient() {
                             <div className="px-3 py-2 flex items-start gap-3">
                               <div className="min-w-0">
                                 <p className="font-semibold text-sm text-neutral-900 line-clamp-1 group-hover:text-orange-600 transition-colors">
-                                  {post.title}
+                                  {newsItem.title}
                                 </p>
-                                <p className="text-xs text-neutral-500">{formatDate(post.createdAt)}</p>
+                                <p className="text-xs text-neutral-500">{formatDate(newsItem.createdAt)}</p>
                               </div>
                             </div>
                           </Link>
@@ -245,7 +307,7 @@ export function DashboardClient() {
                       ))}
                     </ul>
                   ) : (
-                    <p className="text-sm text-neutral-500">Nenhum post publicado ainda.</p>
+                    <p className="text-sm text-neutral-500">Nenhuma notícia publicada ainda.</p>
                   )}
                 </div>
               </div>
@@ -264,14 +326,14 @@ export function DashboardClient() {
                     </div>
                   ) : draftList.length ? (
                     <ul className="space-y-2">
-                      {draftList.map((post) => (
-                        <li key={post.id} className="border border-neutral-100 rounded-lg overflow-hidden">
-                          <Link href={`/news/${post.slug}`} className="block group">
+                      {draftList.map((newsItem) => (
+                        <li key={newsItem.id} className="border border-neutral-100 rounded-lg overflow-hidden">
+                          <Link href={`/edit/${newsItem.slug}`} className="block group">
                             <div className="w-full bg-neutral-100">
-                              {post.coverImageUrl ? (
+                              {newsItem.coverImageUrl ? (
                                 <Image
-                                  src={post.coverImageUrl}
-                                  alt={post.title}
+                                  src={newsItem.coverImageUrl}
+                                  alt={newsItem.title}
                                   width={640}
                                   height={360}
                                   className="w-full object-cover"
@@ -285,9 +347,9 @@ export function DashboardClient() {
                             <div className="px-3 py-2 flex items-start gap-3">
                               <div className="min-w-0">
                                 <p className="font-semibold text-sm text-neutral-900 line-clamp-1 group-hover:text-orange-600 transition-colors">
-                                  {post.title}
+                                  {newsItem.title}
                                 </p>
-                                <p className="text-xs text-neutral-500">Atualizado {formatDate(post.updatedAt)}</p>
+                                <p className="text-xs text-neutral-500">Atualizado {formatDate(newsItem.updatedAt)}</p>
                               </div>
                             </div>
                           </Link>
@@ -307,7 +369,7 @@ export function DashboardClient() {
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-500">Nova publicação</p>
-                  <h2 className="text-lg font-semibold text-neutral-900">Criar post</h2>
+                  <h2 className="text-lg font-semibold text-neutral-900">Criar notícia</h2>
                 </div>
                 <div className="flex items-center gap-3 text-xs text-neutral-500">
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -379,7 +441,9 @@ export function DashboardClient() {
                       onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
                       className="text-sm"
                     />
-                    <p className="text-xs text-neutral-500">Arquivos são convertidos para base64 e enviados como coverImageUrl (funciona em produção no Next).</p>
+                    <p className="text-xs text-neutral-500">
+                      Arquivos são convertidos para base64 e enviados como coverImageUrl (funciona em produção no Next).
+                    </p>
                   </div>
                   <input
                     className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"

@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Kbd } from "@heroui/react";
+import { Kbd, Progress } from "@heroui/react";
 import {
   Search,
   X,
@@ -14,10 +14,11 @@ import {
   Bell,
 } from "lucide-react";
 
-import { usePostSearch } from "@/lib/use-search";
+import { useNewsSearch } from "@/lib/use-search";
 import { fetchTopNews } from "@/lib/api/news";
-import { Post } from "@/types/post";
+import type { News } from "@/types/news";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { UserStatus } from "@/components/UI/user/UserStatus";
 
 const ROTATION_INTERVAL = 6000;
 
@@ -38,7 +39,7 @@ function SearchOverlay({
   onClose: () => void;
   locationLabel: string;
 }) {
-  const { query, setQuery, results, loading, error } = usePostSearch();
+  const { query, setQuery, results, loading, error } = useNewsSearch();
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -65,7 +66,7 @@ function SearchOverlay({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100] flex items-start justify-center pt-[10vh] px-4 bg-black/20 backdrop-blur-sm"
+          className="fixed inset-0 z-100 flex items-start justify-center pt-[10vh] px-4 bg-black/20 backdrop-blur-sm"
           onClick={onClose}
         >
           <motion.div
@@ -152,7 +153,7 @@ function SearchOverlay({
                           <div className="min-w-0">
                             <p className="font-medium text-neutral-900 line-clamp-1">{result.title}</p>
                             <p className="text-xs text-neutral-500 line-clamp-1">
-                              {result.description || "Visualizar post"}
+                              {result.description || "Visualizar notícia"}
                             </p>
                           </div>
                         </div>
@@ -180,10 +181,13 @@ function SearchOverlay({
 
 export default function NewsNavbar() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [tickerPosts, setTickerPosts] = useState<Post[]>([]);
+  const [tickerNews, setTickerNews] = useState<News[]>([]);
   const [tickerIndex, setTickerIndex] = useState(0);
-  const activeTicker = tickerPosts.length
-    ? tickerPosts[Math.min(tickerIndex, Math.max(0, tickerPosts.length - 1))]
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const scrollContainerRef = useRef<HTMLElement | Window | null>(null);
+  const rafIdRef = useRef<number | null>(null);
+  const activeTicker = tickerNews.length
+    ? tickerNews[Math.min(tickerIndex, Math.max(0, tickerNews.length - 1))]
     : undefined;
 
   const currentLocation = "Rede Você";
@@ -208,13 +212,13 @@ export default function NewsNavbar() {
 
     const loadTicker = async () => {
       try {
-        const posts = await fetchTopNews(8);
-        const featured = posts.filter((p) => {
+        const news = await fetchTopNews(8);
+        const featured = news.filter((p) => {
           if (!p.isFeatured) return false;
           if (!p.featuredUntil) return true;
           return new Date(p.featuredUntil) > new Date();
         });
-        if (!cancel) setTickerPosts(featured);
+        if (!cancel) setTickerNews(featured);
       } catch (err) {
         console.error("Erro ao carregar manchetes", err);
       }
@@ -227,27 +231,65 @@ export default function NewsNavbar() {
   }, []);
 
   useEffect(() => {
-    if (tickerPosts.length <= 1) return;
+    if (tickerNews.length <= 1) return;
 
     const id = setInterval(() => {
-      setTickerIndex((prev) => (prev + 1) % tickerPosts.length);
+      setTickerIndex((prev) => (prev + 1) % tickerNews.length);
     }, ROTATION_INTERVAL);
 
     return () => clearInterval(id);
-  }, [tickerPosts.length]);
+  }, [tickerNews.length]);
+
+  useEffect(() => {
+    const container = document.querySelector<HTMLElement>("[data-scroll-container]");
+    scrollContainerRef.current = container ?? window;
+
+    const measure = () => {
+      const target = scrollContainerRef.current;
+      const total =
+        target && target !== window
+          ? (target as HTMLElement).scrollHeight - (target as HTMLElement).clientHeight
+          : document.documentElement.scrollHeight - window.innerHeight;
+      const current =
+        target && target !== window ? (target as HTMLElement).scrollTop : window.scrollY;
+      const value = total > 0 ? Math.min(100, Math.max(0, (current / total) * 100)) : 0;
+      setScrollProgress(value);
+    };
+
+    const scheduleMeasure = () => {
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = requestAnimationFrame(measure);
+    };
+
+    measure();
+    const target = scrollContainerRef.current;
+    target?.addEventListener("scroll", scheduleMeasure, { passive: true });
+    window.addEventListener("resize", scheduleMeasure);
+
+    const resizeObserver =
+      target && target !== window ? new ResizeObserver(scheduleMeasure) : null;
+    if (resizeObserver && target && target !== window) resizeObserver.observe(target as HTMLElement);
+
+    return () => {
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+      target?.removeEventListener("scroll", scheduleMeasure as EventListener);
+      window.removeEventListener("resize", scheduleMeasure);
+      resizeObserver?.disconnect();
+    };
+  }, [pathname]);
 
   return (
     <header className="relative left-0 z-50 w-full shadow-sm">
       {/* TOP STATUS BAR */}
       <div className="bg-neutral-950 text-white text-[11px] font-medium tracking-tight">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-1.5">
-          <div className="flex items-center gap-4 overflow-hidden">
-            <div className="flex items-center gap-1.5 border-r border-neutral-800 pr-4">
+        <div className="mx-auto flex max-w-7xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-3 sm:px-4 py-2 sm:py-1.5">
+          <div className="flex w-full sm:w-auto items-center gap-3 sm:gap-4 overflow-hidden">
+            <div className="flex items-center gap-1.5 border-r border-neutral-800 pr-3 sm:pr-4">
               <Clock className="h-3 w-3 text-neutral-500" />
               <time className="text-neutral-400 uppercase">{formatDate(new Date())}</time>
             </div>
 
-            <div className="relative h-5 overflow-hidden">
+            <div className="relative h-5 overflow-hidden flex-1 min-w-0">
               <AnimatePresence mode="wait">
                   {activeTicker ? (
                     <motion.div
@@ -256,12 +298,12 @@ export default function NewsNavbar() {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
                       transition={{ duration: 0.3, ease: "easeOut" }}
-                      className="flex items-center gap-3 whitespace-nowrap"
+                      className="flex items-center gap-3 whitespace-nowrap min-w-0"
                     >
                       <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
                       <Link
                         href={`/news/${activeTicker.slug}`}
-                        className="text-neutral-200 hover:text-white cursor-pointer transition-colors line-clamp-1"
+                        className="text-neutral-200 hover:text-white cursor-pointer transition-colors truncate"
                         title={activeTicker.title}
                       >
                         {activeTicker.title}
@@ -274,7 +316,7 @@ export default function NewsNavbar() {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
                       transition={{ duration: 0.3, ease: "easeOut" }}
-                      className="flex items-center gap-3 whitespace-nowrap"
+                      className="flex items-center gap-3 whitespace-nowrap min-w-0"
                     >
                       <span className="h-1.5 w-1.5 rounded-full bg-neutral-700" />
                       <span className="h-3 w-40 rounded bg-neutral-800 animate-pulse" />
@@ -294,8 +336,8 @@ export default function NewsNavbar() {
 
       {/* MAIN NAVBAR */}
       <div className="bg-white border-b border-neutral-100">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-6">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-3 sm:px-4 py-3">
+          <div className="flex items-center gap-4 sm:gap-6">
             <div className="flex items-center">
               <Link href="/" className="bg-neutral-950 p-1.5 rounded shadow-lg">
                 <Image
@@ -303,17 +345,17 @@ export default function NewsNavbar() {
                   width={110}
                   height={110}
                   alt="Rede Você"
-                  className="brightness-110"
+                  className="brightness-110 w-[86px] sm:w-[110px] h-auto"
                   priority
                 />
               </Link>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 ml-auto">
             <button
               onClick={() => setIsSearchOpen(true)}
-              className="flex items-center gap-2 rounded-full bg-neutral-50 px-4 py-2 text-sm text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 transition-all border border-neutral-200/50"
+              className="flex items-center gap-2 rounded-full bg-neutral-50 text-sm text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 transition-all border border-neutral-200/50 w-10 h-10 sm:h-auto sm:w-auto px-0 sm:px-4 py-0 sm:py-2 justify-center"
               aria-label="Buscar notícias"
             >
               <Search className="h-4 w-4" />
@@ -321,34 +363,34 @@ export default function NewsNavbar() {
               <Kbd className="hidden md:inline-flex ml-2 bg-white border-neutral-200 text-[10px]">⌘K</Kbd>
             </button>
 
-            <div className="h-6 w-[1px] bg-neutral-100 mx-2 hidden sm:block" />
+            <div className="h-6 w-px bg-neutral-100 mx-2 hidden sm:block" />
+
+            <div className="ml-1 sm:ml-0">
+              <UserStatus />
+            </div>
           </div>
         </div>
       </div>
 
       {/* SUB NAV */}
       <nav className="bg-neutral-50/80 backdrop-blur-md border-b border-neutral-200/50">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-1">
-          <div className="flex gap-1 overflow-x-auto py-1">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-3 sm:px-4 py-1">
+          <div className="flex gap-1 overflow-x-auto py-1 -ml-1 pr-3 sm:ml-0 sm:pr-0">
               {[
               { name: "Últimas", tag: "" },
-              { name: "Política", tag: "politica" },
-              { name: "Economia", tag: "economia" },
-              { name: "Tecnologia", tag: "tecnologia" },
-              { name: "Cultura", tag: "cultura" },
-              { name: "Esportes", tag: "esportes" },
-              { name: "Saúde", tag: "saude" }
+              { name: "VC TV", tag: "vc-tv" },
+              { name: "PODCAST", tag: "podcast" },
+              // { name: "Tecnologia", tag: "tecnologia" },
+              // { name: "Cultura", tag: "cultura" },
+              // { name: "Esportes", tag: "esportes" },
+              // { name: "Saúde", tag: "saude" }
             ].map((cat) => (
               <button
                 key={cat.name}
                 onClick={() => {
-                  const params = new URLSearchParams(searchParams.toString());
-                  if (cat.tag) {
-                    params.set("tag", cat.tag);
-                  } else {
-                    params.delete("tag");
-                  }
-                  router.push(`${pathname}?${params.toString()}`);
+                  const params = new URLSearchParams();
+                  if (cat.tag) params.set("tag", cat.tag);
+                  router.push(`/${params.toString() ? `?${params.toString()}` : ""}`);
                 }}
                 className={`px-3 py-1.5 text-[13px] font-bold transition-all rounded-md whitespace-nowrap ${
                   activeTag === cat.tag
@@ -362,6 +404,19 @@ export default function NewsNavbar() {
           </div>
         </div>
       </nav>
+
+      <div>
+        <Progress
+          aria-label="Progresso de leitura"
+          value={scrollProgress}
+          size="lg"
+          className="w-full"
+          classNames={{
+            track: "h-2.5 rounded-none bg-neutral-200/80",
+            indicator: "h-2.5 rounded-none bg-[var(--primary)]",
+          }}
+        />
+      </div>
 
       {/* Search Overlay */}
       <SearchOverlay

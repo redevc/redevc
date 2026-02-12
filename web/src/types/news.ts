@@ -1,6 +1,6 @@
-export type PostStatus = "draft" | "published";
+export type NewsStatus = "draft" | "published";
 
-export type Post = {
+export type News = {
   id: string;
   slug: string;
   title: string;
@@ -9,9 +9,10 @@ export type Post = {
   authorId: string;
   coverImageUrl?: string;
   tags?: string[];
-  status: PostStatus;
+  status: NewsStatus;
   isFeatured?: boolean;
   featuredUntil?: string;
+  views: number;
   createdAt: string;
   updatedAt: string;
 };

@@ -1,17 +1,18 @@
 import type { WithId } from "mongodb";
 import { db } from "../client.js";
-import type { Post } from "../../http/schemas/post.js";
+import type { News } from "../../http/schemas/news.js";
 
-export type PostDocument = WithId<Post>;
+export type NewsDocument = WithId<News>;
 
-export const postsCollection = db.collection<PostDocument>("posts");
+export const newsCollection = db.collection<NewsDocument>("news");
 
-export const ensurePostIndexes = async () => {
+export const ensureNewsIndexes = async () => {
   try {
-    await postsCollection.createIndexes([
+    await newsCollection.createIndexes([
       { key: { id: 1 }, name: "id_unique", unique: true },
       { key: { slug: 1 }, name: "slug_unique", unique: true },
       { key: { status: 1 }, name: "status_idx" },
+      { key: { views: -1 }, name: "views_idx" },
       { key: { tags: 1 }, name: "tags_idx" },
       {
         key: { title: "text", description: "text", tags: "text" },

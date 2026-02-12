@@ -52,7 +52,7 @@ export default function AdBannerCarousel() {
               <Image
                 src={ADS[index].image}
                 alt={ADS[index].alt}
-                className="w-full h-[160px] object-cover"
+                className="w-full h-auto aspect-[20/3] max-h-[180px] sm:max-h-[200px] object-contain sm:object-cover"
                 width={1200}
                 height={180}
                 priority={false}

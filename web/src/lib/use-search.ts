@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { searchNews, type PostPreview } from "./api/news";
+import { searchNews, type NewsPreview } from "./api/news";
 
 const MIN_CHARS = 2;
 const DEBOUNCE_MS = 300;
 
-export function usePostSearch() {
+export function useNewsSearch() {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<PostPreview[]>([]);
+  const [results, setResults] = useState<NewsPreview[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

@@ -87,7 +87,7 @@ export default function Footer() {
       </div>
 
       {/* Bottom */}
-      <div className="border-t border-border text-center py-4 text-xs text-muted-foreground">
+      <div className="border-t border-primary/30 text-center py-4 text-xs text-muted-foreground">
         © {new Date().getFullYear()} Rede Você. Todos os direitos reservados.
       </div>
     </footer>

@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
@@ -81,11 +80,22 @@ export function UserStatus() {
     name: "rememberMe",
   });
 
+  const userId = session?.user?.id as string | undefined;
+
   const [open, setOpen] = useState(false);
   const [loginPasswordVisible, setLoginPasswordVisible] = useState(false);
   const [signupPasswordVisible, setSignupPasswordVisible] = useState(false);
 
   const isLogged = Boolean(session?.user);
+  const initials = (session?.user?.name ?? session?.user?.email ?? "??").slice(0, 2).toUpperCase();
+
+  const handlePrimaryAction = () => {
+    if (isLogged) {
+      router.push(userId ? `/dashboard/${userId}` : "/dashboard");
+      return;
+    }
+    setOpen(true);
+  };
 
   async function handleSignIn(rawData: SignInSchema) {
     const parsed = signInSchema.safeParse(rawData);
@@ -124,7 +134,7 @@ export function UserStatus() {
             color: "success",
           });
           setOpen(false);
-          router.push("/dashboard");
+          router.push("/");
         },
         onError: () => {
           signInForm.setError("email", {
@@ -179,7 +189,7 @@ export function UserStatus() {
             color: "success",
           });
           setOpen(false);
-          router.push("/dashboard");
+          router.push("/");
         },
         onError: () => {
           signUpForm.setError("email", {
@@ -199,27 +209,33 @@ export function UserStatus() {
   return (
     <>
       <Button
-        onClick={() => setOpen(true)}
-        variant="light"
-        className="flex items-center gap-2"
+        onClick={handlePrimaryAction}
+        variant={isLogged ? "light" : "bordered"}
+        className="flex items-center gap-2 h-10 rounded-full border border-neutral-200 bg-white px-3 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
         aria-label={isLogged ? "Abrir dashboard" : "Entrar"}
         title={isLogged ? "Abrir dashboard" : "Entrar"}
       >
         {session?.user ? (
-          <Link href="/dashboard">
-            <Image
-              src={session.user.image || ""}
-              alt={session.user.name || "User"}
-              width={16}
-              height={16}
-              className="rounded-full"
-            />
-            {/* <span className="ml-2 text-sm font-medium">{session.user.name || "Perfil"}</span> */}
-          </Link>
+          <div className="flex items-center gap-2">
+            {session.user.image ? (
+              <Image
+                src={session.user.image}
+                alt={session.user.name || session.user.email || "User"}
+                width={32}
+                height={32}
+                className="h-8 w-8 rounded-full object-cover border border-neutral-200"
+              />
+            ) : (
+              <div className="h-8 w-8 rounded-full bg-neutral-200 text-neutral-700 flex items-center justify-center text-xs font-bold">
+                {initials}
+              </div>
+            )}
+            <span className="hidden sm:inline">Minha conta</span>
+          </div>
         ) : (
           <div className="flex items-center gap-2">
             <FaUserCircle className="h-4 w-4" aria-hidden="true" />
-            {/* <span className="text-sm font-semibold">Entrar</span> */}
+            <span>Entrar</span>
           </div>
         )}
       </Button>
