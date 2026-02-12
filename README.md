@@ -53,9 +53,8 @@ Comandos por workspace:
 - Roles e autorização estão descritas em `api/src/utils/roles.ts` e `web/src/utils/roles.ts`.
 - Comentários persistentes estão implementados na API; o front ainda usa localStorage — veja nota em `web/src/components/comments/Comments.tsx`.
 - OpenAPI é exposto pela API (plugin `@elysiajs/openapi`); confira `api/README.md` para detalhes.
-- 
+
+
 ## Time
 
 - [@yeyTaken](https://github.com/yeyTaken) – Tech Lead
-
-
