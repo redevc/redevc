@@ -401,7 +401,7 @@ export function NewsSlugClient({
                 onKeyDown={handleTagKeyDown}
                 onBlur={handleTagBlur}
                 placeholder={tagsValue.length === 0 ? "Adicionar tag e tecle Enter" : "Nova tag"}
-                className="min-w-[160px] flex-1"
+                className="min-w-40 flex-1"
                 classNames={{
                   input: "text-sm",
                   inputWrapper:

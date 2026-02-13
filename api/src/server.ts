@@ -12,6 +12,7 @@ import { userRoutes } from "./http/routes/user.js";
 import { usersRoutes } from "./http/routes/users.js";
 import { aboutRoutes } from "./http/routes/about.js";
 import { newsRoutes } from "./http/routes/news.js";
+import { commentsRoutes } from "./http/routes/comments.js";
 import { Package } from "./config/package.js";
 
 const app = new Elysia({
@@ -47,6 +48,7 @@ const app = new Elysia({
             description: "System authentication for users in routes",
           },
           { name: "News", description: "News related routes" },
+          { name: "Comments", description: "Comments related routes" },
         ],
       },
     }),
@@ -57,6 +59,7 @@ const app = new Elysia({
   .use(usersRoutes)
   .use(aboutRoutes)
   .use(newsRoutes)
+  .use(commentsRoutes)
   .listen({ port: env.DEFAULT_PORT }, (info) => {
     logger(`🔥 api is running at ${info.hostname}:${info.port}`);
   });
