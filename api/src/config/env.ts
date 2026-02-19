@@ -16,6 +16,12 @@ const envSchema = z.object({
 
   MONGODB_URI: z.string().startsWith("mongodb+srv://"),
   MONGODB_DB_NAME: z.string(),
+
+  AUDIO_UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(524288000),
+  AUDIO_UPLOAD_CHUNK_BYTES: z.coerce.number().int().positive().default(5242880),
+  AUDIO_UPLOAD_TMP_DIR: z.string().default("/tmp/redevc-audio"),
+  AUDIO_WORKER_POLL_MS: z.coerce.number().int().positive().default(3000),
+  FFMPEG_PATH: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);

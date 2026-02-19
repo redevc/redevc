@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { addToast, Tabs, Tab } from "@heroui/react";
-import { notFound } from "next/navigation";
+import { notFound, useRouter } from "next/navigation";
 
 import { auth } from "@/lib/auth";
 import { createNews, fetchNews } from "@/lib/api/news";
-import type { News } from "@/types/news";
+import { AudioUploadPanel } from "@/components/editor/AudioUploadPanel";
+import type { News, NewsStatus } from "@/types/news";
 import { isPublisherRole } from "@/utils/roles";
 
 const formatDate = (iso: string) =>
@@ -19,22 +20,80 @@ const formatDate = (iso: string) =>
     minute: "2-digit",
   });
 
+const normalizeTag = (value: string) => value.trim().replace(/\s+/g, " ");
+
+const parseTags = (raw: string) => {
+  const tags: string[] = [];
+  const seen = new Set<string>();
+
+  for (const part of raw.split(",")) {
+    const tag = normalizeTag(part);
+    if (!tag) continue;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tags.push(tag);
+  }
+
+  return tags;
+};
+
+const isValidHttpUrl = (value: string) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+const appendMarkdownToken = (content: string, token: string) => {
+  const base = content.trimEnd();
+  if (!base) return token;
+  return `${base}\n\n${token}`;
+};
+
+const parseCreateErrorMessage = (error: unknown) => {
+  if (error instanceof Error) {
+    if (error.message.includes("403")) return "Você não tem permissão para criar notícias.";
+    if (error.message.includes("400") || error.message.includes("422")) {
+      return "Dados inválidos. Revise os campos e tente novamente.";
+    }
+
+    const payload = error.message.match(/\{.*\}$/)?.[0];
+    if (payload) {
+      try {
+        const parsed = JSON.parse(payload) as { message?: string };
+        if (parsed.message) return parsed.message;
+      } catch {
+        return error.message;
+      }
+    }
+
+    return error.message;
+  }
+
+  return "Não foi possível criar a notícia. Tente novamente.";
+};
+
+const parseUnknownErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null) {
+    const maybeError = error as { message?: unknown; error?: unknown };
+    if (typeof maybeError.message === "string") return maybeError.message;
+    if (typeof maybeError.error === "string") return maybeError.error;
+  }
+  return fallback;
+};
+
 export function AdminDashboardClient() {
+  const router = useRouter();
   const { data: session, isPending } = auth.useSession();
   const [published, setPublished] = useState<News[]>([]);
   const [drafts, setDrafts] = useState<News[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [coverPreview, setCoverPreview] = useState<string | undefined>();
-  const [form, setForm] = useState({
-    title: "",
-    description: "",
-    content: "",
-    coverImageUrl: "",
-    tagsInput: "",
-    status: "draft" as "draft" | "published",
-  });
+
 
   const user = session?.user;
   const userId = user?.id as string | undefined;
@@ -42,6 +101,17 @@ export function AdminDashboardClient() {
   const [profileName, setProfileName] = useState(user?.name ?? "");
   const [profileImage, setProfileImage] = useState(user?.image ?? "");
   const [savingProfile, setSavingProfile] = useState(false);
+  const [createTitle, setCreateTitle] = useState("");
+  const [createDescription, setCreateDescription] = useState("");
+  const [createContent, setCreateContent] = useState("");
+  const [createCoverImageUrl, setCreateCoverImageUrl] = useState("");
+  const [createTags, setCreateTags] = useState("");
+  const [createStatus, setCreateStatus] = useState<NewsStatus>("draft");
+  const [createIsFeatured, setCreateIsFeatured] = useState(false);
+  const [createFeaturedUntil, setCreateFeaturedUntil] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createContentToolTab, setCreateContentToolTab] = useState<"text" | "audio">("text");
 
   useEffect(() => {
     if (!isAdmin || !session?.user?.id) return;
@@ -72,64 +142,76 @@ export function AdminDashboardClient() {
     };
   }, [isAdmin, session?.user?.id]);
 
-  const handleFile = (file: File | null) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result?.toString();
-      if (result) {
-        setCoverPreview(result);
-        setForm((f) => ({ ...f, coverImageUrl: result }));
-      }
-    };
-    reader.readAsDataURL(file);
-  };
+  const handleCreateNews = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (creating) return;
 
-  const handleCreate = async () => {
-    if (!form.title.trim() || !form.description.trim() || !form.content.trim()) {
-      addToast({ title: "Preencha título, descrição e conteúdo", color: "warning" });
+    const title = createTitle.trim();
+    const description = createDescription.trim();
+    const content = createContent.trim();
+    const coverImageUrl = createCoverImageUrl.trim();
+
+    if (title.length < 4) {
+      setCreateError("O título precisa ter pelo menos 4 caracteres.");
       return;
     }
-    setSubmitting(true);
+    if (description.length < 8) {
+      setCreateError("A descrição precisa ter pelo menos 8 caracteres.");
+      return;
+    }
+    if (content.length < 16) {
+      setCreateError("O conteúdo precisa ter pelo menos 16 caracteres.");
+      return;
+    }
+    if (coverImageUrl && !isValidHttpUrl(coverImageUrl)) {
+      setCreateError("A URL da capa precisa ser uma URL válida (http:// ou https://).");
+      return;
+    }
+
+    let featuredUntil: string | undefined;
+    if (createIsFeatured && createFeaturedUntil.trim()) {
+      const date = new Date(createFeaturedUntil);
+      if (Number.isNaN(date.getTime())) {
+        setCreateError("A data de destaque é inválida.");
+        return;
+      }
+      featuredUntil = date.toISOString();
+    }
+
+    setCreating(true);
+    setCreateError(null);
+
     try {
-      const payload = {
-        title: form.title.trim(),
-        description: form.description.trim(),
-        content: form.content.trim(),
-        coverImageUrl: form.coverImageUrl || undefined,
-        tags: form.tagsInput
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean),
-        status: form.status,
-      };
-      await createNews(payload);
-      addToast({ title: "Publicação criada", color: "success" });
-      setForm({
-        title: "",
-        description: "",
-        content: "",
-        coverImageUrl: "",
-        tagsInput: "",
-        status: "draft",
+      const news = await createNews({
+        title,
+        description,
+        content,
+        coverImageUrl: coverImageUrl || undefined,
+        tags: (() => {
+          const tags = parseTags(createTags);
+          return tags.length ? tags : undefined;
+        })(),
+        status: createStatus,
+        isFeatured: createIsFeatured || undefined,
+        featuredUntil: createIsFeatured ? featuredUntil : undefined,
       });
-      setCoverPreview(undefined);
-      setLoading(true);
-      const [pub, drf] = await Promise.all([
-        fetchNews({ status: "published", limit: 50 }),
-        fetchNews({ status: "draft", limit: 50, authorId: session?.user?.id }),
-      ]);
-      setPublished(pub);
-      setDrafts(drf);
-    } catch (err) {
+
       addToast({
-        title: "Erro ao criar publicação",
-        description: err instanceof Error ? err.message : "Falha desconhecida",
+        title: "Notícia criada com sucesso",
+        description: "Redirecionando para a edição...",
+        color: "success",
+      });
+      router.push(`/edit/${news.slug}`);
+    } catch (err) {
+      const message = parseCreateErrorMessage(err);
+      setCreateError(message);
+      addToast({
+        title: "Erro ao criar notícia",
+        description: message,
         color: "danger",
       });
     } finally {
-      setSubmitting(false);
-      setLoading(false);
+      setCreating(false);
     }
   };
 
@@ -168,7 +250,7 @@ export function AdminDashboardClient() {
           </div>
           <button
             type="button"
-            onClick={() => auth.signOut?.().catch(() => {})}
+            onClick={() => auth.signOut?.().catch(() => { })}
             className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 hover:bg-neutral-100 shadow-sm"
           >
             Sair
@@ -181,42 +263,39 @@ export function AdminDashboardClient() {
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-500">Perfil</p>
               <h2 className="text-lg font-semibold text-neutral-900">Editar informações</h2>
             </div>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!userId) return;
-                  setSavingProfile(true);
-                  await auth.updateUser(
-                    {
-                      name: profileName.trim() || undefined,
-                      image: profileImage.trim() || null,
+            <button
+              type="button"
+              onClick={async () => {
+                if (!userId) return;
+                setSavingProfile(true);
+                await auth.updateUser(
+                  {
+                    name: profileName.trim() || undefined,
+                    image: profileImage.trim() || null,
+                  },
+                  {
+                    onSuccess: () => {
+                      addToast({ title: "Perfil atualizado", color: "success" });
                     },
-                    {
-                      onSuccess: () => {
-                        addToast({ title: "Perfil atualizado", color: "success" });
-                      },
-                      onError: (err) => {
-                        const message =
-                          err instanceof Error
-                            ? err.message
-                            : (err as any)?.message || (err as any)?.error || "Falha desconhecida";
-                        addToast({
-                          title: "Erro ao salvar perfil",
-                          description: message,
-                          color: "danger",
-                        });
-                      },
-                      onSettled: () => {
-                        setSavingProfile(false);
-                      },
+                    onError: (err) => {
+                      const message = parseUnknownErrorMessage(err, "Falha desconhecida");
+                      addToast({
+                        title: "Erro ao salvar perfil",
+                        description: message,
+                        color: "danger",
+                      });
                     },
-                  );
-                }}
-                disabled={savingProfile || !userId}
-                className="inline-flex items-center gap-2 rounded-full bg-neutral-900 text-white px-4 py-2 text-sm font-semibold hover:bg-neutral-800 transition disabled:opacity-60"
-              >
-                {savingProfile ? "Salvando..." : "Salvar"}
-              </button>
+                    onSettled: () => {
+                      setSavingProfile(false);
+                    },
+                  },
+                );
+              }}
+              disabled={savingProfile || !userId}
+              className="inline-flex items-center gap-2 rounded-full bg-neutral-900 text-white px-4 py-2 text-sm font-semibold hover:bg-neutral-800 transition disabled:opacity-60"
+            >
+              {savingProfile ? "Salvando..." : "Salvar"}
+            </button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <label className="block text-sm font-medium text-neutral-800">
@@ -364,104 +443,165 @@ export function AdminDashboardClient() {
             </section>
           </Tab>
 
+
           <Tab key="create" title="Criar">
             <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm space-y-4 mt-4">
-              <div className="flex items-center justify-between flex-wrap gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-500">Nova publicação</p>
-                  <h2 className="text-lg font-semibold text-neutral-900">Criar notícia</h2>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-500">Criar notícia</p>
+                <h2 className="text-lg font-semibold text-neutral-900">Novo conteúdo</h2>
+                <p className="text-sm text-neutral-500 mt-1">Preencha os dados e publique agora ou salve como rascunho.</p>
+              </div>
+
+              {createError ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 text-red-800 px-4 py-3 text-sm">
+                  {createError}
                 </div>
-                <div className="flex items-center gap-3 text-xs text-neutral-500">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <span>Status:</span>
+              ) : null}
+
+              <form className="space-y-4" onSubmit={handleCreateNews}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <label className="block text-sm font-medium text-neutral-800">
+                    Título *
+                    <input
+                      value={createTitle}
+                      onChange={(e) => setCreateTitle(e.target.value)}
+                      minLength={4}
+                      required
+                      className="mt-1 w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      placeholder="Título da notícia"
+                    />
+                  </label>
+
+                  <label className="block text-sm font-medium text-neutral-800">
+                    Status
                     <select
-                      className="border border-neutral-200 rounded px-2 py-1 text-sm bg-white"
-                      value={form.status}
-                      onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as "draft" | "published" }))}
+                      value={createStatus}
+                      onChange={(e) => setCreateStatus(e.target.value as NewsStatus)}
+                      className="mt-1 w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
                     >
                       <option value="draft">Rascunho</option>
                       <option value="published">Publicado</option>
                     </select>
                   </label>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-3">
-                  <input
-                    className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    placeholder="Título"
-                    value={form.title}
-                    onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                  />
+                <label className="block text-sm font-medium text-neutral-800">
+                  Descrição *
                   <textarea
-                    className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm min-h-[80px] focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    placeholder="Descrição curta"
-                    value={form.description}
-                    onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                    value={createDescription}
+                    onChange={(e) => setCreateDescription(e.target.value)}
+                    minLength={8}
+                    required
+                    rows={3}
+                    className="mt-1 w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    placeholder="Resumo da notícia"
                   />
-                  <textarea
-                    className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    placeholder="Conteúdo"
-                    value={form.content}
-                    onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-neutral-700">Capa</label>
-                    {coverPreview ? (
-                      <Image
-                        src={coverPreview}
-                        alt="Pré-visualização"
-                        width={640}
-                        height={360}
-                        className="w-full h-40 object-cover rounded-lg border border-neutral-200"
-                        unoptimized
-                      />
-                    ) : (
-                      <div className="w-full h-40 rounded-lg border border-dashed border-neutral-300 flex items-center justify-center text-sm text-neutral-400">
-                        Sem imagem
-                      </div>
-                    )}
-                    <input
-                      type="url"
-                      className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      placeholder="URL da imagem (opcional)"
-                      value={form.coverImageUrl}
-                      onChange={(e) => {
-                        setForm((f) => ({ ...f, coverImageUrl: e.target.value }));
-                        setCoverPreview(e.target.value);
-                      }}
-                    />
-                    <label className="text-sm text-neutral-600">ou envie um arquivo</label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
-                      className="text-sm"
-                    />
-                    <p className="text-xs text-neutral-500">
-                      Arquivos são convertidos para base64 e enviados como coverImageUrl (funciona em produção no Next).
+                </label>
+
+                <div className="space-y-2">
+                  <div>
+                    <p className="text-sm font-medium text-neutral-800">Conteúdo *</p>
+                    <p className="text-xs text-neutral-500 mt-1">
+                      Use as abas para alternar entre edição de texto e upload de áudio.
                     </p>
                   </div>
-                  <input
-                    className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    placeholder="Tags separadas por vírgula"
-                    value={form.tagsInput}
-                    onChange={(e) => setForm((f) => ({ ...f, tagsInput: e.target.value }))}
-                  />
-                  <button
-                    onClick={handleCreate}
-                    disabled={submitting}
-                    className="w-full rounded-lg bg-neutral-900 text-white py-2 text-sm font-semibold hover:bg-neutral-800 transition disabled:opacity-60"
+
+                  <Tabs
+                    aria-label="Ferramentas de conteúdo na criação"
+                    selectedKey={createContentToolTab}
+                    onSelectionChange={(key) => setCreateContentToolTab(key as "text" | "audio")}
+                    color="warning"
+                    variant="underlined"
+                    classNames={{
+                      tab: "text-sm font-semibold",
+                    }}
                   >
-                    {submitting ? "Enviando..." : "Publicar"}
+                    <Tab key="text" title="Texto">
+                      <textarea
+                        value={createContent}
+                        onChange={(e) => setCreateContent(e.target.value)}
+                        minLength={16}
+                        required
+                        rows={10}
+                        className="mt-1 w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        placeholder="Conteúdo em Markdown"
+                      />
+                    </Tab>
+                    <Tab key="audio" title="Audio Desk">
+                      <AudioUploadPanel
+                        onTokenReady={(token) => {
+                          setCreateContent((current) => appendMarkdownToken(current, token));
+                        }}
+                        disabled={creating}
+                      />
+                    </Tab>
+                  </Tabs>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <label className="block text-sm font-medium text-neutral-800">
+                    URL da capa (opcional)
+                    <input
+                      type="url"
+                      value={createCoverImageUrl}
+                      onChange={(e) => setCreateCoverImageUrl(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      placeholder="https://..."
+                    />
+                  </label>
+
+                  <label className="block text-sm font-medium text-neutral-800">
+                    Tags (opcional)
+                    <input
+                      value={createTags}
+                      onChange={(e) => setCreateTags(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      placeholder="tecnologia, brasil, política"
+                    />
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                  <label className="inline-flex items-center gap-2 text-sm font-medium text-neutral-800">
+                    <input
+                      type="checkbox"
+                      checked={createIsFeatured}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setCreateIsFeatured(checked);
+                        if (!checked) setCreateFeaturedUntil("");
+                      }}
+                      className="h-4 w-4 rounded border-neutral-300 text-orange-500 focus:ring-orange-500"
+                    />
+                    Marcar como destaque
+                  </label>
+
+                  <label className="block text-sm font-medium text-neutral-800">
+                    Destacar até (opcional)
+                    <input
+                      type="datetime-local"
+                      value={createFeaturedUntil}
+                      onChange={(e) => setCreateFeaturedUntil(e.target.value)}
+                      disabled={!createIsFeatured}
+                      className="mt-1 w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-60"
+                    />
+                  </label>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    disabled={creating}
+                    className="inline-flex items-center gap-2 rounded-full bg-neutral-900 text-white px-5 py-2 text-sm font-semibold hover:bg-neutral-800 transition disabled:opacity-60"
+                  >
+                    {creating ? "Criando..." : "Criar notícia"}
                   </button>
                 </div>
-              </div>
+              </form>
             </section>
           </Tab>
+
+
         </Tabs>
       </div>
     </main>

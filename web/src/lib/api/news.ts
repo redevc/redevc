@@ -66,6 +66,24 @@ export async function fetchTopNews(limit = 5): Promise<News[]> {
   return fetchNews({ status: "published", page: 1, limit });
 }
 
+export type CreateNewsInput = {
+  title: string;
+  description: string;
+  content: string;
+  coverImageUrl?: string;
+  tags?: string[];
+  status?: "draft" | "published";
+  isFeatured?: boolean;
+  featuredUntil?: string;
+};
+
+export async function createNews(payload: CreateNewsInput): Promise<News> {
+  return fetchJson<News>("/news", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export type NewsPreview = Pick<
   News,
   "id" | "slug" | "title" | "description" | "coverImageUrl" | "createdAt" | "status" | "tags"
@@ -78,23 +96,5 @@ export async function searchNews(query: string, opts?: { limit?: number; status?
       limit: opts?.limit ?? 10,
       status: opts?.status,
     },
-  });
-}
-
-export type CreateNewsInput = {
-  title: string;
-  description: string;
-  content: string;
-  coverImageUrl?: string;
-  tags?: string[];
-  status?: "draft" | "published";
-  isFeatured?: boolean;
-  featuredUntil?: string | null;
-};
-
-export async function createNews(payload: CreateNewsInput): Promise<News> {
-  return fetchJson<News>("/news", {
-    method: "POST",
-    body: JSON.stringify(payload),
   });
 }

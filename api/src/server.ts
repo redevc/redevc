@@ -13,6 +13,8 @@ import { usersRoutes } from "./http/routes/users.js";
 import { aboutRoutes } from "./http/routes/about.js";
 import { newsRoutes } from "./http/routes/news.js";
 import { commentsRoutes } from "./http/routes/comments.js";
+import { audioRoutes } from "./http/routes/audio.js";
+import { startAudioWorker } from "./services/audio-worker.js";
 import { Package } from "./config/package.js";
 
 const app = new Elysia({
@@ -49,6 +51,7 @@ const app = new Elysia({
           },
           { name: "News", description: "News related routes" },
           { name: "Comments", description: "Comments related routes" },
+          { name: "Media", description: "Media upload and streaming routes" },
         ],
       },
     }),
@@ -60,8 +63,11 @@ const app = new Elysia({
   .use(aboutRoutes)
   .use(newsRoutes)
   .use(commentsRoutes)
+  .use(audioRoutes)
   .listen({ port: env.DEFAULT_PORT }, (info) => {
     logger(`🔥 api is running at ${info.hostname}:${info.port}`);
   });
+
+startAudioWorker();
 
 export type App = typeof app;

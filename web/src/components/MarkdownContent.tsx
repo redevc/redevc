@@ -11,11 +11,14 @@ import {
 } from "react-icons/fa";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { AudioWavePlayer } from "@/components/audio/AudioWavePlayer";
 
 type Props = {
   content: string;
   className?: string;
 };
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
 
 const calloutTokenRegex = /^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|WARN|CAUTION)\]\s*/i;
 
@@ -135,6 +138,8 @@ export function MarkdownContent({ content, className }: Props) {
     </div>
   );
 
+  const renderAudio = (src: string, title?: string) => <AudioWavePlayer src={src} title={title} />;
+
   const normalizeVideoSrc = (url: string) => {
     try {
       const parsed = new URL(url);
@@ -170,6 +175,25 @@ export function MarkdownContent({ content, className }: Props) {
     }
   };
 
+  const normalizeAudioSrc = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+
+    if (/^https?:\/\//i.test(trimmed)) {
+      try {
+        const parsed = new URL(trimmed);
+        return parsed.protocol === "http:" || parsed.protocol === "https:" ? trimmed : "";
+      } catch {
+        return "";
+      }
+    }
+
+    const looksLikeUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(trimmed);
+    if (!looksLikeUuid || !API_URL) return "";
+    return `${API_URL}/media/audio/assets/${trimmed}/mp3`;
+  };
+
   return (
     <div className={className}>
       <ReactMarkdown
@@ -192,6 +216,12 @@ export function MarkdownContent({ content, className }: Props) {
           ),
           p: ({ children }) => {
             const text = extractText(children).trim();
+            const audioMatch = /^@audio\s+(\S+)(?:\s*\|\s*(.+))?$/i.exec(text);
+            if (audioMatch) {
+              const src = normalizeAudioSrc(audioMatch[1] ?? "");
+              if (src) return renderAudio(src, audioMatch[2]);
+            }
+
             const match = /^@youtube\s+(\S+)(?:\s*\|\s*(.+))?$/i.exec(text);
             if (match) {
               const rawSrc = match[1];
@@ -249,7 +279,7 @@ export function MarkdownContent({ content, className }: Props) {
             const isInline = !className;
             if (isInline) {
               return (
-                <code className="px-1 py-0.5 rounded bg-foreground/10 font-mono text-xs">
+                <code className="px-1 py-0.5 bg-yellow-300/70 text-foreground font-mono text-xs">
                   {children}
                 </code>
               );

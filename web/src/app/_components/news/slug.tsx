@@ -33,12 +33,19 @@ import { FaCheckCircle, FaLock } from "react-icons/fa";
 
 import { MarkdownContent } from "@/components/MarkdownContent";
 import { Comments } from "@/components/comments/Comments";
+import { AudioUploadPanel } from "@/components/editor/AudioUploadPanel";
 import { useEditNews } from "@/lib/edit-news-context";
 import { auth } from "@/lib/auth";
 
 import type { News } from "@/types/news";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
+
+const appendMarkdownToken = (content: string, token: string) => {
+  const base = content.trimEnd();
+  if (!base) return token;
+  return `${base}\n\n${token}`;
+};
 
 type Props = {
   slug: string;
@@ -75,6 +82,7 @@ export function NewsSlugClient({
   const [error, setError] = useState<string | null>(null);
   const hasIncrementedRef = useRef(false);
   const [activeTab, setActiveTab] = useState<"edit" | "preview">("edit");
+  const [contentToolTab, setContentToolTab] = useState<"text" | "audio">("text");
 
   const fetchAuthor = useCallback(async (authorId: string) => {
     const res = await fetch(`${API_URL}/users/${encodeURIComponent(authorId)}`, {
@@ -518,24 +526,48 @@ export function NewsSlugClient({
             }}
           >
             <Tab key="edit" title="Conteúdo">
-              <Card shadow="sm" radius="lg" className="bg-white/90">
-                <CardBody className="space-y-2">
-                  <p className="text-[11px] uppercase tracking-[0.16em] text-neutral-500 font-semibold">Conteúdo</p>
-                  <p className="text-xs text-neutral-500">Markdown suportado. Use Enter ou Shift+Enter para quebrar linhas.</p>
-                  <Textarea
-                    aria-label="Conteúdo da notícia"
-                  variant="bordered"
-                  color="warning"
-                  radius="md"
-                  minRows={12}
-                  value={contentValue}
-                  onChange={(e) => handleContentChange(e.target.value)}
-                  classNames={{
-                    input: "text-sm leading-6 resize-y min-h-[280px] border-neutral-200 focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/0 transition rounded-md",
-                    inputWrapper:
-                      "bg-white shadow-none border-0 hover:border-0",
-                  }}
-                />
+                <Card shadow="sm" radius="lg" className="bg-white/90">
+                  <CardBody className="space-y-3">
+                    <p className="text-[11px] uppercase tracking-[0.16em] text-neutral-500 font-semibold">Conteúdo</p>
+                    <p className="text-xs text-neutral-500">Markdown suportado. Use Enter ou Shift+Enter para quebrar linhas.</p>
+                    <Tabs
+                      aria-label="Ferramentas de conteúdo"
+                      selectedKey={contentToolTab}
+                      onSelectionChange={(key) => setContentToolTab(key as "text" | "audio")}
+                      color="primary"
+                      variant="underlined"
+                      classNames={{
+                        tab: "text-sm font-semibold",
+                        cursor: "bg-[var(--primary)]/80",
+                      }}
+                    >
+                      <Tab key="text" title="Texto">
+                        <Textarea
+                          aria-label="Conteúdo da notícia"
+                          variant="bordered"
+                          color="warning"
+                          radius="md"
+                          minRows={12}
+                          value={contentValue}
+                          onChange={(e) => handleContentChange(e.target.value)}
+                          classNames={{
+                            input: "text-sm leading-6 resize-y min-h-[280px] border-neutral-200 focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/0 transition rounded-md",
+                            inputWrapper:
+                              "bg-white shadow-none border-0 hover:border-0",
+                          }}
+                        />
+                      </Tab>
+                      <Tab key="audio" title="Audio Desk">
+                        <AudioUploadPanel
+                          onTokenReady={(token) => {
+                            if (!edit) return;
+                            const next = appendMarkdownToken(contentValue, token);
+                            handleContentChange(next);
+                          }}
+                          disabled={!edit || edit.saving}
+                        />
+                      </Tab>
+                    </Tabs>
               </CardBody>
             </Card>
             </Tab>

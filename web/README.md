@@ -35,7 +35,8 @@ NEXT_PUBLIC_WEB_URL=http://localhost:5117
 - `EditNewsProvider` (`src/lib/edit-news-context.tsx`): gestão de rascunho, dirty state, salvamento, toast.
 - `SaveBubble`: atalho de salvar (Ctrl/Cmd+S) e status de persistência.
 - `Comments`: atualmente salva em `localStorage`; rota proxy `/api/comments` pronta para conectar à API.
-- Markdown: `MarkdownContent` suporta callouts `[!NOTE]` e embeds YouTube com `@youtube <url>`.
+- Markdown: `MarkdownContent` suporta callouts `[!NOTE]`, embeds YouTube com `@youtube <url>` e áudio com `@audio <assetId> | <título opcional>`.
+- Editor: telas de criação/edição possuem upload de áudio chunked, com conversão assíncrona para MP3 e inserção automática do token `@audio`.
 
 ## Arquitetura (resumo)
 - `src/app/` — rotas Next (app router).

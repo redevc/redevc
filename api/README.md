@@ -21,6 +21,11 @@ Crie `api/.env.development.local` para desenvolvimento (ou `.env.local` para pro
 | `WEB_URL` | URL pública do site. |
 | `MONGODB_URI` | String de conexão MongoDB. |
 | `MONGODB_DB_NAME` | Nome do banco (ex.: `api`). |
+| `AUDIO_UPLOAD_MAX_BYTES` | Tamanho máximo por upload de áudio em bytes (padrão `524288000`). |
+| `AUDIO_UPLOAD_CHUNK_BYTES` | Tamanho de chunk de upload em bytes (padrão `5242880`). |
+| `AUDIO_UPLOAD_TMP_DIR` | Diretório temporário para chunks e transcode (padrão `/tmp/redevc-audio`). |
+| `AUDIO_WORKER_POLL_MS` | Intervalo de polling do worker de conversão (padrão `3000`). |
+| `FFMPEG_PATH` | Caminho opcional para binário ffmpeg. Se ausente, usa `ffmpeg-static`. |
 
 ## Scripts
 - `pnpm --filter @redevc/api dev` — modo watch (tsx).
@@ -41,6 +46,11 @@ Crie `api/.env.development.local` para desenvolvimento (ou `.env.local` para pro
 - `PUT /news/:id` — atualiza notícia (autor ou publisher).
 - `DELETE /news/:id` — remove notícia (autor ou publisher).
 - `POST /news/slug/:slug/view` — incrementa visualizações.
+- `POST /media/audio/uploads` — cria sessão de upload chunked de áudio (publisher).
+- `PUT /media/audio/uploads/:uploadId/chunks/:index` — envia chunk de áudio (`application/octet-stream`).
+- `POST /media/audio/uploads/:uploadId/complete` — finaliza upload e enfileira conversão para MP3.
+- `GET /media/audio/assets/:assetId/status` — status do asset (`queued|processing|ready|failed`).
+- `GET /media/audio/assets/:assetId/mp3` — stream público do MP3 convertido com suporte a `Range`.
 
 ## Autorização e roles
 Roles possíveis: `owner`, `admin`, `developer`, `editor`, `user` (`api/src/utils/roles.ts`).  

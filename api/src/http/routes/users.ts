@@ -101,6 +101,7 @@ usersRoutes.patch(
     return { success: true, id };
   },
   {
+    auth: true,
     detail: {
       summary: "Update user profile",
       tags: ["User"],
