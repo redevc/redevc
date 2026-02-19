@@ -232,7 +232,10 @@ export const newsRoutes = new Elysia({ prefix: "/news" })
       }
 
       const skip = (query.page - 1) * query.limit;
-      const sort: Sort = { createdAt: -1, updatedAt: -1 };
+      const sort: Sort =
+        query.sortBy === "views"
+          ? { views: -1, createdAt: -1, updatedAt: -1 }
+          : { createdAt: -1, updatedAt: -1 };
 
       const [data, total] = await Promise.all([
         newsCollection

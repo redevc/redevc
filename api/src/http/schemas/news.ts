@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const newsStatusSchema = z.enum(["draft", "published"]);
+export const newsSortBySchema = z.enum(["recent", "views"]);
 
 export const newsSchema = z.object({
   id: z.string().uuid(),
@@ -53,6 +54,7 @@ export const newsQuerySchema = z.object({
   tag: z.string().optional(),
   authorId: z.coerce.string().optional(),
   featuredOnly: z.coerce.boolean().optional(),
+  sortBy: newsSortBySchema.optional().default("recent"),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(50).default(10),
 });

@@ -14,6 +14,8 @@ export const ensureNewsIndexes = async () => {
       { key: { status: 1 }, name: "status_idx" },
       { key: { views: -1 }, name: "views_idx" },
       { key: { tags: 1 }, name: "tags_idx" },
+      { key: { status: 1, authorId: 1, createdAt: -1 }, name: "status_author_created_idx" },
+      { key: { status: 1, views: -1, createdAt: -1 }, name: "status_views_created_idx" },
       {
         key: { title: "text", description: "text", tags: "text" },
         name: "text_search",

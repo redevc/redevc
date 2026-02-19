@@ -10,6 +10,7 @@ import { FiTrendingUp, FiHeart, FiGlobe, FiHome } from "react-icons/fi";
 
 import { fetchNews } from "@/lib/api/news";
 import type { News } from "@/types/news";
+import { slugify } from "@/utils/slugify";
 
 const LIMIT = 12;
 const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "";
@@ -202,11 +203,19 @@ export function HomeClient() {
     if (!authorId) return null;
     const info = authorMap[authorId];
     const display = info?.name ?? info?.username ?? "Autor";
+    const authorSlug = slugify(info?.name ?? info?.username ?? "");
+    const authorHref = authorSlug ? `/author/${encodeURIComponent(authorSlug)}` : null;
     return (
       <span className="relative inline-flex items-center group/author">
-        <span className="font-semibold text-gray-700 group-hover/author:text-orange-600 transition-colors">
-          {display}
-        </span>
+        {authorHref ? (
+          <Link href={authorHref} className="font-semibold text-gray-700 group-hover/author:text-primary transition-colors">
+            {display}
+          </Link>
+        ) : (
+          <span className="font-semibold text-gray-700 group-hover/author:text-primary transition-colors">
+            {display}
+          </span>
+        )}
         <div className="absolute left-0 top-full mt-2 hidden group-hover/author:flex">
           <div className="rounded-xl border border-neutral-200 bg-white shadow-lg p-3 w-56 flex gap-3 pointer-events-none">
             {info?.image ? (

@@ -36,6 +36,7 @@ import { Comments } from "@/components/comments/Comments";
 import { AudioUploadPanel } from "@/components/editor/AudioUploadPanel";
 import { useEditNews } from "@/lib/edit-news-context";
 import { auth } from "@/lib/auth";
+import { slugify } from "@/utils/slugify";
 
 import type { News } from "@/types/news";
 
@@ -214,6 +215,11 @@ export function NewsSlugClient({
     () => (isEditRoute && edit?.draft ? edit.draft.tags ?? [] : news?.tags ?? []),
     [isEditRoute, edit?.draft, news?.tags],
   );
+
+  const authorHref = useMemo(() => {
+    const authorSlug = slugify(author?.name ?? author?.username ?? "");
+    return authorSlug ? `/author/${encodeURIComponent(authorSlug)}` : null;
+  }, [author?.name, author?.username]);
 
   const placeCaretAtEnd = (el: HTMLElement) => {
     const range = document.createRange();
@@ -487,9 +493,15 @@ export function NewsSlugClient({
                   </span>
                 )}
                 <div className="flex flex-col leading-tight">
-                  <span className="font-semibold text-neutral-900">
-                    {author.name ?? author.username ?? "Autor"}
-                  </span>
+                  {authorHref ? (
+                    <Link href={authorHref} className="font-semibold text-neutral-900 hover:text-primary transition-colors">
+                      {author.name ?? author.username ?? "Autor"}
+                    </Link>
+                  ) : (
+                    <span className="font-semibold text-neutral-900">
+                      {author.name ?? author.username ?? "Autor"}
+                    </span>
+                  )}
                   {author.username ? (
                     <span className="text-xs text-neutral-500">@{author.username}</span>
                   ) : null}
@@ -606,9 +618,15 @@ export function NewsSlugClient({
             </div>
           )}
           <div className="min-w-0">
-            <p className="text-base font-semibold text-neutral-900">
-              {author ? author.name ?? author.username ?? "Autor" : "Autor não informado"}
-            </p>
+            {author && authorHref ? (
+              <Link href={authorHref} className="text-base font-semibold text-neutral-900 hover:text-primary transition-colors">
+                {author.name ?? author.username ?? "Autor"}
+              </Link>
+            ) : (
+              <p className="text-base font-semibold text-neutral-900">
+                {author ? author.name ?? author.username ?? "Autor" : "Autor não informado"}
+              </p>
+            )}
             <p className="text-sm text-neutral-500">
               {author?.username ? `@${author.username}` : author?.role ?? "Colaborador"}
             </p>

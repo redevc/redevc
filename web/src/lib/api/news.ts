@@ -44,17 +44,19 @@ export async function fetchNews(opts?: {
   status?: "draft" | "published";
   tag?: string;
   authorId?: string;
+  sortBy?: "recent" | "views";
   page?: number;
   limit?: number;
   featuredOnly?: boolean;
 }): Promise<News[]> {
-  const { status = "published", tag, authorId, page = 1, limit = 10, featuredOnly } = opts ?? {};
+  const { status = "published", tag, authorId, sortBy, page = 1, limit = 10, featuredOnly } = opts ?? {};
 
   return fetchJson<News[]>("/news", {
     params: {
       status,
       tag,
       authorId,
+      sortBy,
       page,
       limit,
       featuredOnly,
